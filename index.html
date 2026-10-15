@@ -176,6 +176,22 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .held{display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:12px}
 .held h3{font-family:var(--f-display);font-size:12px;color:var(--warn);letter-spacing:.05em;margin:0}
 .held .item{border-left:3px solid var(--warn)}
+.setup-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.setup-meter{flex:1 1 180px;max-width:320px;height:8px;border-radius:4px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.setup-meter i{display:block;height:100%;background:linear-gradient(90deg,var(--pink),var(--teal));box-shadow:0 0 8px var(--teal)}
+.setup-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.setup-cols h3{font-family:var(--f-display);font-size:12px;letter-spacing:.05em;margin:0 0 6px;color:var(--teal)}
+.setup-cols h3.you{color:var(--pink)}
+.setup-cols ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.su{display:grid;grid-template-columns:28px 1fr;gap:8px;align-items:start;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel-2)}
+.su input{width:22px;height:22px;margin:2px 0 0;accent-color:var(--good)}
+.su b{display:block;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.su small{display:block;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.su .tag{font-family:var(--f-data);font-size:10px;color:var(--violet);letter-spacing:.04em;text-transform:uppercase}
+.su .wait{color:var(--warn)}
+.su.done{opacity:.5}.su.done b{text-decoration:line-through}
+#setupDone{margin-top:10px}
+#setupDone summary{cursor:pointer;color:var(--muted);font-size:13px;min-height:32px;display:flex;align-items:center}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
@@ -235,6 +251,18 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
       <div class="bars" id="spendBars"></div>
     </section>
   </div>
+
+  <section class="panel" aria-label="Setup checklist">
+    <div class="setup-head">
+      <h2 class="sec" style="margin:0">FULL STEAM CHECKLIST <small id="setupSub">what's left to get every bot running</small></h2>
+      <div class="setup-meter" aria-hidden="true"><i id="setupBar" style="width:0%"></i></div>
+    </div>
+    <div class="setup-cols">
+      <div><h3 class="you">YOUR MOVES</h3><ul id="setupYou"></ul></div>
+      <div><h3>CLAUDE'S BUILD LIST</h3><ul id="setupClaude"></ul></div>
+    </div>
+    <details id="setupDone" hidden><summary id="setupDoneSum">Done</summary><ul id="setupDoneList" style="list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px"></ul></details>
+  </section>
 
   <section class="panel" aria-label="Add a detailer">
     <h2 class="sec">ADD A DETAILER <small>spotted one on Facebook or Instagram?</small></h2>
@@ -355,9 +383,10 @@ function setConn(kind, text) { const c = $("conn"); c.className = "pill " + kind
 async function load() {
   if (!sbc || loading) return; loading = true; $("refresh").disabled = true;
   try {
-    const [{ data: hq, error }, ob] = await Promise.all([sbc.rpc("hq_dashboard"), sbc.rpc("hq_outbox")]);
+    const [{ data: hq, error }, ob, su] = await Promise.all([sbc.rpc("hq_dashboard"), sbc.rpc("hq_outbox"), sbc.from("setup_items").select("*").order("sort")]);
     if (error) throw error;
     hq.outbox = ob && !ob.error && Array.isArray(ob.data) ? ob.data : [];
+    hq.setup = su && !su.error && Array.isArray(su.data) ? su.data : [];
     data = hq; mode = "live"; $("notice").hidden = true; $("sampleBadge").hidden = true;
     setConn("live", "Live");
     const u = $("updated"); u.hidden = false; u.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -514,6 +543,36 @@ function renderHeld() {
     box.append(card);
   });
 }
+function renderSetup() {
+  const all = data.setup || [];
+  const open = all.filter((s) => !s.done), done = all.filter((s) => s.done);
+  const doneTitles = new Set(done.map((s) => s.title));
+  $("setupBar").style.width = (all.length ? (done.length / all.length) * 100 : 0) + "%";
+  $("setupSub").textContent = all.length ? done.length + " of " + all.length + " done" : "what's left to get every bot running";
+  const row = (s) => {
+    const li = el("li", "su" + (s.done ? " done" : ""));
+    const cb = el("input"); cb.type = "checkbox"; cb.checked = !!s.done; cb.disabled = mode !== "live"; cb.setAttribute("aria-label", (s.done ? "Undo: " : "Mark done: ") + s.title);
+    cb.addEventListener("change", async () => {
+      cb.disabled = true;
+      const { error } = await sbc.from("setup_items").update({ done: cb.checked, done_at: cb.checked ? new Date().toISOString() : null }).eq("id", s.id);
+      if (error) { cb.checked = !cb.checked; cb.disabled = false; showNotice("Couldn't save that (" + String(error.message).slice(0, 80) + ").", "err"); return; }
+      s.done = cb.checked; renderSetup();
+    });
+    const body = el("div");
+    body.append(el("span", "tag", s.area), el("b", null, s.title));
+    if (s.detail) body.append(el("small", null, s.detail));
+    if (!s.done && s.blocked_by && !doneTitles.has(s.blocked_by)) body.append(el("small", "wait", "Waiting on: " + s.blocked_by));
+    li.append(cb, body); return li;
+  };
+  const you = $("setupYou"), cl = $("setupClaude"), dl = $("setupDoneList");
+  you.replaceChildren(); cl.replaceChildren(); dl.replaceChildren();
+  const yo = open.filter((s) => s.owner === "you"), co = open.filter((s) => s.owner === "claude");
+  yo.forEach((s) => you.append(row(s))); co.forEach((s) => cl.append(row(s)));
+  if (!yo.length) you.append(el("li", "empty", "Nothing on your plate."));
+  if (!co.length) cl.append(el("li", "empty", "Nothing left to build."));
+  done.forEach((s) => dl.append(row(s)));
+  $("setupDone").hidden = !done.length; $("setupDoneSum").textContent = "Done (" + done.length + ")";
+}
 function renderPipeline() {
   const box = $("pipeline"); box.replaceChildren();
   const posted = (data.posted_mtd || []).filter((r) => inFilter(r.venture_id));
@@ -628,7 +687,7 @@ function renderLegend() {
   const c = { working: 0, lounge: 0, off: 0 }; (data.agents || []).forEach((a) => c[agentStatus(a)]++);
   $("lgWork").textContent = c.working; $("lgLounge").textContent = c.lounge; $("lgOff").textContent = c.off;
 }
-function renderAll() { renderBoss(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
+function renderAll() { renderBoss(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderSetup(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
 
 /* ---------- the floor (canvas) ---------- */
 const world = (() => {
