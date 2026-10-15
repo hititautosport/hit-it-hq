@@ -32,7 +32,7 @@
 html,body{background:var(--bg)}
 body{color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45;
   padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
-  padding-top:calc(env(safe-area-inset-top, 0px) + 14px);padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 40px);margin:0;
+  padding-top:calc(env(safe-area-inset-top, 0px) + 14px);padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 96px);margin:0;
   -webkit-text-size-adjust:100%;overscroll-behavior-y:none;
   background-image:radial-gradient(1200px 500px at 15% -10%, rgba(255,79,163,.13), transparent 60%),radial-gradient(900px 500px at 100% 0%, rgba(46,230,214,.10), transparent 60%);
   background-attachment:fixed}
@@ -192,6 +192,32 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .su.done{opacity:.5}.su.done b{text-decoration:line-through}
 #setupDone{margin-top:10px}
 #setupDone summary{cursor:pointer;color:var(--muted);font-size:13px;min-height:32px;display:flex;align-items:center}
+.tab{display:flex;flex-direction:column;gap:18px}
+.tab[hidden]{display:none}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:15;display:flex;justify-content:center;gap:2px;
+  padding:6px max(8px, env(safe-area-inset-left, 0px)) calc(env(safe-area-inset-bottom, 0px) + 6px);
+  background:rgba(11,7,22,.92);border-top:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  box-shadow:0 -1px 0 rgba(143,107,255,.18),0 -8px 24px rgba(0,0,0,.4)}
+.tabbtn{position:relative;flex:1 1 0;max-width:140px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  background:none;border:0;border-radius:10px;color:var(--dim);font:600 11px var(--f-body);letter-spacing:.02em;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tabbtn svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabbtn:hover{color:var(--muted)}
+.tabbtn[aria-selected="true"]{color:var(--teal);background:rgba(46,230,214,.08)}
+.tabbtn[aria-selected="true"] svg{filter:drop-shadow(0 0 5px rgba(46,230,214,.7))}
+.tabbtn:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
+.tabbtn .badge{position:absolute;top:3px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--pink);color:#fff;
+  font:700 11px/18px var(--f-data);font-style:normal;text-align:center;box-shadow:0 0 8px rgba(255,79,163,.7)}
+.kpi.tap{cursor:pointer}.kpi.tap:hover{border-color:var(--violet)}
+@media (max-width:600px){
+  .top{flex-wrap:nowrap;gap:8px}
+  .top .controls{flex-wrap:nowrap;gap:6px}
+  .brand .tag,#updated{display:none !important}
+  .logo{font-size:22px;white-space:nowrap}
+  .top .btn{padding:7px 9px;font-size:11px;white-space:nowrap}
+  #conn{padding:8px}
+  #connText{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .wrap{gap:14px}
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
@@ -214,11 +240,12 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 
   <nav class="chips" id="ventureChips" aria-label="Filter by business"></nav>
 
+  <div class="tab" id="tab-floor" role="tabpanel" aria-labelledby="tb-floor">
   <section class="score" aria-label="This month">
     <div class="kpi hero"><span class="k">PROFIT · THIS MONTH</span><span class="v" id="kProfit">$0.00</span><span class="s">Sales after fees &amp; printing, minus spend</span></div>
     <div class="kpi"><span class="k">SALES IN</span><span class="v" id="kGross">$0.00</span><span class="s" id="kCuts">$0.00 to Etsy, printing &amp; fees</span></div>
     <div class="kpi"><span class="k">SPEND OUT</span><span class="v" id="kSpend">$0.00</span><span class="s">AI, ads, subscriptions</span></div>
-    <div class="kpi"><span class="k">WAITING ON YOU</span><span class="v" id="kWait">0</span><span class="s">Posts &amp; picks to approve</span></div>
+    <div class="kpi tap" id="kWaitTile" role="button" tabindex="0" aria-label="Open Approve"><span class="k">WAITING ON YOU</span><span class="v" id="kWait">0</span><span class="s">Posts &amp; picks to approve</span></div>
   </section>
 
   <section class="floor" aria-label="HQ floor">
@@ -237,32 +264,29 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
     </div>
   </section>
 
-  <div class="grid">
+  <section class="panel" aria-label="Crew">
+    <h2 class="sec">THE CREW <small>schedules in your local time</small></h2>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>BOT</th><th>BUSINESS</th><th>BRAIN</th><th>SCHEDULE</th><th>STATUS</th><th class="num">SPENT / BUDGET</th></tr></thead>
+      <tbody id="crew"></tbody>
+    </table></div>
+  </section>
+  </div>
+
+  <div class="tab" id="tab-approve" role="tabpanel" aria-labelledby="tb-approve" hidden>
     <section class="panel" aria-label="Approvals">
       <h2 class="sec">APPROVE <small>nothing posts without you</small></h2>
       <div class="outbox" id="outboxBox" hidden><h3>READY TO SEND</h3><p class="note">Send it (Mail for emails, their page for DMs), then come back and tap Mark sent.</p><div class="appr" id="outbox"></div></div>
       <div class="appr" id="approvals"></div>
       <div class="held" id="heldBox" hidden><h3>HELD FOR FIXES</h3><div class="appr" id="held"></div></div>
     </section>
+  </div>
+
+  <div class="tab" id="tab-pipeline" role="tabpanel" aria-labelledby="tb-pipeline" hidden>
     <section class="panel" aria-label="Pipeline">
       <h2 class="sec">PIPELINE <small>this month</small></h2>
       <div class="pipe" id="pipeline"></div>
-      <h3 class="sec" style="font-size:13px">SPEND BY TYPE</h3>
-      <div class="bars" id="spendBars"></div>
     </section>
-  </div>
-
-  <section class="panel" aria-label="Setup checklist">
-    <div class="setup-head">
-      <h2 class="sec" style="margin:0">FULL STEAM CHECKLIST <small id="setupSub">what's left to get every bot running</small></h2>
-      <div class="setup-meter" aria-hidden="true"><i id="setupBar" style="width:0%"></i></div>
-    </div>
-    <div class="setup-cols">
-      <div><h3 class="you">YOUR MOVES</h3><ul id="setupYou"></ul></div>
-      <div><h3>CLAUDE'S BUILD LIST</h3><ul id="setupClaude"></ul></div>
-    </div>
-    <details id="setupDone" hidden><summary id="setupDoneSum">Done</summary><ul id="setupDoneList" style="list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px"></ul></details>
-  </section>
 
   <section class="panel" aria-label="Add a detailer">
     <h2 class="sec">ADD A DETAILER <small>spotted one on Facebook or Instagram?</small></h2>
@@ -275,15 +299,13 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
     </form>
   </section>
 
-  <section class="panel" aria-label="Crew">
-    <h2 class="sec">THE CREW <small>schedules in your local time</small></h2>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>BOT</th><th>BUSINESS</th><th>BRAIN</th><th>SCHEDULE</th><th>STATUS</th><th class="num">SPENT / BUDGET</th></tr></thead>
-      <tbody id="crew"></tbody>
-    </table></div>
-  </section>
+    <section class="panel" aria-label="Activity">
+      <h2 class="sec">ACTIVITY <small>latest 30</small></h2>
+      <ul class="feed" id="feed"></ul>
+    </section>
+  </div>
 
-  <div class="grid">
+  <div class="tab" id="tab-money" role="tabpanel" aria-labelledby="tb-money" hidden>
     <section class="panel" aria-label="Money by month">
       <h2 class="sec">MONEY <small>last 6 months</small></h2>
       <div class="tbl-wrap"><table>
@@ -291,14 +313,36 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
         <tbody id="money"></tbody>
       </table></div>
     </section>
-    <section class="panel" aria-label="Activity">
-      <h2 class="sec">ACTIVITY <small>latest 30</small></h2>
-      <ul class="feed" id="feed"></ul>
-    </section>
+
+  <section class="panel" aria-label="Spend by type">
+    <h2 class="sec">SPEND BY TYPE <small>this month</small></h2>
+    <div class="bars" id="spendBars"></div>
+  </section>
+  </div>
+
+  <div class="tab" id="tab-setup" role="tabpanel" aria-labelledby="tb-setup" hidden>
+  <section class="panel" aria-label="Setup checklist">
+    <div class="setup-head">
+      <h2 class="sec" style="margin:0">FULL STEAM CHECKLIST <small id="setupSub">what's left to get every bot running</small></h2>
+      <div class="setup-meter" aria-hidden="true"><i id="setupBar" style="width:0%"></i></div>
+    </div>
+    <div class="setup-cols">
+      <div><h3 class="you">YOUR MOVES</h3><ul id="setupYou"></ul></div>
+      <div><h3>CLAUDE'S BUILD LIST</h3><ul id="setupClaude"></ul></div>
+    </div>
+    <details id="setupDone" hidden><summary id="setupDoneSum">Done</summary><ul id="setupDoneList" style="list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px"></ul></details>
+  </section>
   </div>
 
   <div class="foot">Hit It HQ · refreshes every minute while open and whenever you come back to the app</div>
 </div>
+<nav class="tabbar" role="tablist" aria-label="Sections">
+  <button class="tabbtn" id="tb-floor" role="tab" type="button" aria-controls="tab-floor" data-tab="floor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg><span>Floor</span></button>
+  <button class="tabbtn" id="tb-approve" role="tab" type="button" aria-controls="tab-approve" data-tab="approve"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H8l-4 4z"/><path d="m8.5 10 2.5 2.5 4.5-5"/></svg><span>Approve</span><em class="badge" id="badge-approve" hidden></em></button>
+  <button class="tabbtn" id="tb-pipeline" role="tab" type="button" aria-controls="tab-pipeline" data-tab="pipeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg><span>Pipeline</span></button>
+  <button class="tabbtn" id="tb-money" role="tab" type="button" aria-controls="tab-money" data-tab="money"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20"/><path d="M17 6.5c-1-1.3-2.8-2-5-2-2.8 0-4.5 1.4-4.5 3.4 0 4.6 9.5 2.6 9.5 7.6 0 2-1.9 3.5-5 3.5-2.4 0-4.4-.9-5.5-2.4"/></svg><span>Money</span></button>
+  <button class="tabbtn" id="tb-setup" role="tab" type="button" aria-controls="tab-setup" data-tab="setup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/></svg><span>Setup</span><em class="badge" id="badge-setup" hidden></em></button>
+</nav>
 
 
 <div class="auth" id="auth" hidden>
@@ -687,7 +731,36 @@ function renderLegend() {
   const c = { working: 0, lounge: 0, off: 0 }; (data.agents || []).forEach((a) => c[agentStatus(a)]++);
   $("lgWork").textContent = c.working; $("lgLounge").textContent = c.lounge; $("lgOff").textContent = c.off;
 }
-function renderAll() { renderBoss(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderSetup(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
+/* ---------- tabs ---------- */
+const TABS = ["floor", "approve", "pipeline", "money", "setup"];
+let tab = "floor", worldReady = false;
+function showTab(t, opts) {
+  if (!TABS.includes(t)) t = "floor";
+  tab = t;
+  TABS.forEach((k) => {
+    $("tab-" + k).hidden = k !== t;
+    const b = $("tb-" + k); b.setAttribute("aria-selected", String(k === t)); b.tabIndex = k === t ? 0 : -1;
+  });
+  if (!(opts && opts.keepHash)) { try { history.replaceState(null, "", "#" + t); } catch (e) { /* file:// or sandbox */ } }
+  if (!(opts && opts.keepScroll)) window.scrollTo(0, 0);
+  if (t === "floor" && worldReady) world.sync();
+}
+function renderTabs() {
+  const setBadge = (k, n) => { const b = $("badge-" + k); b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n); };
+  setBadge("approve", (data.approvals || []).length + (data.outbox || []).length);
+  setBadge("setup", (data.setup || []).filter((s) => !s.done && s.owner === "you").length);
+}
+document.querySelectorAll(".tabbtn").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+document.querySelector(".tabbar").addEventListener("keydown", (e) => {
+  const i = TABS.indexOf(tab); let n = -1;
+  if (e.key === "ArrowRight") n = (i + 1) % TABS.length; else if (e.key === "ArrowLeft") n = (i - 1 + TABS.length) % TABS.length;
+  if (n >= 0) { e.preventDefault(); showTab(TABS[n]); $("tb-" + TABS[n]).focus(); }
+});
+window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t !== tab) showTab(t, { keepHash: true }); });
+$("kWaitTile").addEventListener("click", () => showTab("approve"));
+$("kWaitTile").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showTab("approve"); } });
+
+function renderAll() { renderBoss(); renderTabs(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderSetup(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
 
 /* ---------- the floor (canvas) ---------- */
 const world = (() => {
@@ -1039,6 +1112,8 @@ const world = (() => {
 })();
 
 /* ---------- wiring ---------- */
+worldReady = true;
+showTab(location.hash.slice(1) || "floor", { keepHash: !location.hash, keepScroll: true });
 $("refresh").addEventListener("click", () => load());
 $("shift").addEventListener("click", () => {
   practice = !practice; const b = $("shift"); b.classList.toggle("on", practice); b.setAttribute("aria-pressed", String(practice));
