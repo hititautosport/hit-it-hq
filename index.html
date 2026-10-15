@@ -218,6 +218,11 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
   #connText{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .wrap{gap:14px}
 }
+.mocks{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.mocks a{flex:0 0 auto}
+.mocks img{display:block;width:150px;height:150px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:#fff}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.tags span{font-family:var(--f-data);font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 7px}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
@@ -459,7 +464,7 @@ async function decide(item, action) {
     if (error) throw error;
     pending.delete(item.id);
     data.approvals = (data.approvals || []).filter((x) => x.id !== item.id); renderAll();
-    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? (item.platform === "dm" ? "Approved and copied. Paste it into their DMs, then tap Mark sent under Ready to send." : item.kind === "email" ? "Approved. After you send it in Mail, tap Mark sent under Ready to send." : "Approved. It's queued for publishing.") : "Rejected."));
+    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? (item.platform === "dm" ? "Approved and copied. Paste it into their DMs, then tap Mark sent under Ready to send." : item.kind === "email" ? "Approved. After you send it in Mail, tap Mark sent under Ready to send." : (item.kind === "product_own_design" ? "Approved. Sending it to Etsy now; it shows under Live on Etsy after the next noon or midnight check." : "Approved.")) : "Rejected."));
     setTimeout(() => { $("notice").hidden = true; }, 3500);
     load();
   } catch (e) {
@@ -524,12 +529,21 @@ function renderApprovals() {
     card.append(meta, el("h4", null, it.kind === "email" ? "Subject: " + (it.title || "(no subject)") : (it.title || "(untitled)")));
     if (it.kind === "email" && it.to_addr) card.append(el("span", "to", "To: " + it.to_addr));
     if (it.platform === "dm") card.append(el("span", "to", "Send as a DM from your own account" + (it.link_url ? " · " + it.link_url.replace(/^https?:\/\/(www\.)?/, "") : "")));
+    const ex = it.extra || null;
+    const mocks = ex && Array.isArray(ex.mockups) && ex.mockups.length ? ex.mockups : (it.tbl === "products" && /^https:\/\/images\.printify\.com\//.test(it.link_url || "") ? [it.link_url] : []);
+    if (mocks.length) {
+      const strip = el("div", "mocks");
+      mocks.filter((u) => /^https:\/\//.test(u)).slice(0, 4).forEach((u, k) => { const a = el("a"); a.href = u; a.target = "_blank"; a.rel = "noopener"; const im = el("img"); im.src = u; im.alt = k ? "Mockup " + (k + 1) : "Shirt mockup"; im.loading = "lazy"; a.append(im); strip.append(a); });
+      card.append(strip);
+    }
+    if (ex && Array.isArray(ex.colors) && ex.colors.length) card.append(el("span", "to", ex.colors.join(" · ")));
     if (it.body) card.append(el("p", it.kind === "email" ? "email" : null, it.body));
-    if (it.link_url && /^https?:\/\//i.test(it.link_url)) { const a = el("a", null, it.kind === "email" ? "See their current site ↗" : "Open link ↗"); a.href = it.link_url; a.target = "_blank"; a.rel = "noopener"; a.style.fontSize = "13px"; card.append(a); }
+    if (ex && Array.isArray(ex.tags) && ex.tags.length) { const tg = el("div", "tags"); ex.tags.forEach((t) => tg.append(el("span", null, t))); card.append(tg); }
+    if (!mocks.length && it.link_url && /^https?:\/\//i.test(it.link_url)) { const a = el("a", null, it.kind === "email" ? "See their current site ↗" : "Open link ↗"); a.href = it.link_url; a.target = "_blank"; a.rel = "noopener"; a.style.fontSize = "13px"; card.append(a); }
     const acts = el("div", "acts"); const st = pending.get(it.id);
     if (st === "saving") acts.append(el("span", "note", "Saving…"));
     else if (st === "approve" || st === "reject") {
-      acts.append(el("span", "note", st === "approve" ? "Approve this?" : "Reject this?"));
+      acts.append(el("span", "note", st === "approve" ? (it.kind === "product_own_design" ? "Publish to Etsy ($0.20 listing fee)?" : "Approve this?") : "Reject this?"));
       const y = el("button", "btn " + (st === "approve" ? "ok" : "no"), "Yes, " + st); y.type = "button"; y.addEventListener("click", () => decide(it, st));
       const n = el("button", "btn", "Cancel"); n.type = "button"; n.addEventListener("click", () => { pending.delete(it.id); renderApprovals(); });
       acts.append(y, n);
@@ -542,7 +556,7 @@ function renderApprovals() {
         y = el("a", "btn ok", "Approve & open in Mail"); y.href = mailUrl({ to: it.to_addr, subject: it.title, body: it.body });
         y.addEventListener("click", () => { decide(it, "approve"); });
       } else {
-        y = el("button", "btn ok", "Approve"); y.type = "button"; y.addEventListener("click", () => { pending.set(it.id, "approve"); renderApprovals(); });
+        y = el("button", "btn ok", it.tbl === "products" && it.kind === "product_own_design" ? "Approve & publish to Etsy" : "Approve"); y.type = "button"; y.addEventListener("click", () => { pending.set(it.id, "approve"); renderApprovals(); });
       }
       const n = el("button", "btn no", "Reject"); n.type = "button"; n.addEventListener("click", () => { pending.set(it.id, "reject"); renderApprovals(); });
       acts.append(y, n);
