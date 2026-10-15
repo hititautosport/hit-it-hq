@@ -164,6 +164,10 @@ td.num,th.num{text-align:right;font-family:var(--f-data);font-variant-numeric:ta
 .auth-msg{font-size:13px;color:var(--muted);min-height:1em;text-align:center}
 .auth-msg.err{color:var(--bad)}
 .linkish{background:none;border:0;color:var(--teal);font-size:13px;text-decoration:underline;padding:0;align-self:center}
+.outbox{display:flex;flex-direction:column;gap:8px;border-bottom:1px dashed var(--line);padding-bottom:12px}
+.outbox h3{font-family:var(--f-display);font-size:12px;color:var(--good);letter-spacing:.05em;margin:0}
+.outbox .item{border-left:3px solid var(--good)}
+a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .held{display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:12px}
 .held h3{font-family:var(--f-display);font-size:12px;color:var(--warn);letter-spacing:.05em;margin:0}
 .held .item{border-left:3px solid var(--warn)}
@@ -215,6 +219,7 @@ td.num,th.num{text-align:right;font-family:var(--f-data);font-variant-numeric:ta
   <div class="grid">
     <section class="panel" aria-label="Approvals">
       <h2 class="sec">APPROVE <small>nothing posts without you</small></h2>
+      <div class="outbox" id="outboxBox" hidden><h3>READY TO SEND</h3><p class="note">Tap Open in Gmail, hit Send, then come back and tap Mark sent.</p><div class="appr" id="outbox"></div></div>
       <div class="appr" id="approvals"></div>
       <div class="held" id="heldBox" hidden><h3>HELD FOR FIXES</h3><div class="appr" id="held"></div></div>
     </section>
@@ -334,8 +339,9 @@ function setConn(kind, text) { const c = $("conn"); c.className = "pill " + kind
 async function load() {
   if (!sbc || loading) return; loading = true; $("refresh").disabled = true;
   try {
-    const { data: hq, error } = await sbc.rpc("hq_dashboard");
+    const [{ data: hq, error }, ob] = await Promise.all([sbc.rpc("hq_dashboard"), sbc.rpc("hq_outbox")]);
     if (error) throw error;
+    hq.outbox = ob && !ob.error && Array.isArray(ob.data) ? ob.data : [];
     data = hq; mode = "live"; $("notice").hidden = true; $("sampleBadge").hidden = true;
     setConn("live", "Live");
     const u = $("updated"); u.hidden = false; u.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -364,7 +370,7 @@ async function decide(item, action) {
     if (error) throw error;
     pending.delete(item.id);
     data.approvals = (data.approvals || []).filter((x) => x.id !== item.id); renderAll();
-    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? "Approved. It's queued for publishing." : "Rejected. It won't be listed."));
+    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? (item.kind === "email" ? "Approved. It's in Ready to send." : "Approved. It's queued for publishing.") : "Rejected."));
     setTimeout(() => { $("notice").hidden = true; }, 3500);
     load();
   } catch (e) {
@@ -443,6 +449,29 @@ function renderApprovals() {
       acts.append(y, n);
     }
     card.append(acts); box.append(card);
+  });
+}
+function gmailUrl(o) {
+  return "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(o.to || "") + "&su=" + encodeURIComponent(o.subject || "") + "&body=" + encodeURIComponent(o.body || "");
+}
+function renderOutbox() {
+  const box = $("outbox"), wrap = $("outboxBox"); box.replaceChildren();
+  const list = (data.outbox || []).filter((o) => filter === "all" || ventureById(filter)?.slug === "hit-digital");
+  wrap.hidden = !list.length;
+  list.forEach((o) => {
+    const card = el("article", "item");
+    card.append(el("h4", null, o.business || "Shop"), el("span", "to", "To: " + (o.to || "?")), el("p", null, "Subject: " + (o.subject || "")));
+    const acts = el("div", "acts");
+    const g = el("a", "btn ok", "Open in Gmail"); g.href = gmailUrl(o); g.target = "_blank"; g.rel = "noopener";
+    const c = el("button", "btn", "Copy email"); c.type = "button";
+    c.addEventListener("click", async () => { const t = "To: " + o.to + "\nSubject: " + o.subject + "\n\n" + o.body; try { await navigator.clipboard.writeText(t); c.textContent = "Copied"; } catch { c.textContent = "Copy failed"; } setTimeout(() => (c.textContent = "Copy email"), 2000); });
+    const m = el("button", "btn", "Mark sent"); m.type = "button";
+    m.addEventListener("click", async () => {
+      m.disabled = true; m.textContent = "Saving…";
+      try { const { error } = await sbc.rpc("hq_mark_sent", { p_id: o.id }); if (error) throw error; data.outbox = (data.outbox || []).filter((x) => x.id !== o.id); renderOutbox(); showNotice("Marked as sent. Replies will come to your Gmail."); setTimeout(() => { $("notice").hidden = true; }, 3500); load(); }
+      catch (e) { m.disabled = false; m.textContent = "Mark sent"; showNotice("Couldn't mark it sent (" + String(e.message || e).slice(0, 80) + "). Try again.", "err"); }
+    });
+    acts.append(g, c, m); card.append(acts); box.append(card);
   });
 }
 function renderHeld() {
@@ -571,7 +600,7 @@ function renderLegend() {
   const c = { working: 0, lounge: 0, off: 0 }; (data.agents || []).forEach((a) => c[agentStatus(a)]++);
   $("lgWork").textContent = c.working; $("lgLounge").textContent = c.lounge; $("lgOff").textContent = c.off;
 }
-function renderAll() { renderBoss(); renderChips(); renderKpis(); renderApprovals(); renderHeld(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
+function renderAll() { renderBoss(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
 
 /* ---------- the floor (canvas) ---------- */
 const world = (() => {
