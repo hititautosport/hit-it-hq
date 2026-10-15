@@ -168,6 +168,11 @@ td.num,th.num{text-align:right;font-family:var(--f-data);font-variant-numeric:ta
 .outbox h3{font-family:var(--f-display);font-size:12px;color:var(--good);letter-spacing:.05em;margin:0}
 .outbox .item{border-left:3px solid var(--good)}
 a.btn{text-decoration:none;display:inline-flex;align-items:center}
+.addlead{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;align-items:end}
+.addlead label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted)}
+.addlead input{font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.addlead input:focus{outline:none;border-color:var(--teal)}
+.addlead .note{grid-column:1/-1;margin:0}
 .held{display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:12px}
 .held h3{font-family:var(--f-display);font-size:12px;color:var(--warn);letter-spacing:.05em;margin:0}
 .held .item{border-left:3px solid var(--warn)}
@@ -219,7 +224,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
   <div class="grid">
     <section class="panel" aria-label="Approvals">
       <h2 class="sec">APPROVE <small>nothing posts without you</small></h2>
-      <div class="outbox" id="outboxBox" hidden><h3>READY TO SEND</h3><p class="note">Tap Open in Mail, hit Send, then come back and tap Mark sent.</p><div class="appr" id="outbox"></div></div>
+      <div class="outbox" id="outboxBox" hidden><h3>READY TO SEND</h3><p class="note">Send it (Mail for emails, their page for DMs), then come back and tap Mark sent.</p><div class="appr" id="outbox"></div></div>
       <div class="appr" id="approvals"></div>
       <div class="held" id="heldBox" hidden><h3>HELD FOR FIXES</h3><div class="appr" id="held"></div></div>
     </section>
@@ -230,6 +235,17 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
       <div class="bars" id="spendBars"></div>
     </section>
   </div>
+
+  <section class="panel" aria-label="Add a detailer">
+    <h2 class="sec">ADD A DETAILER <small>spotted one on Facebook or Instagram?</small></h2>
+    <form class="addlead" id="addLead" novalidate>
+      <label for="alName">Business name<input id="alName" type="text" autocomplete="off" required></label>
+      <label for="alLink">Their Facebook, Instagram or website link<input id="alLink" type="url" inputmode="url" autocomplete="off" required></label>
+      <label for="alEmail">Email (if they list one)<input id="alEmail" type="email" inputmode="email" autocomplete="off"></label>
+      <button class="btn ok" id="alSubmit" type="submit">Add to FinishFlow list</button>
+      <p class="note" id="alMsg" role="status">Detail Pitch writes them a message within a day, and it lands in Approve.</p>
+    </form>
+  </section>
 
   <section class="panel" aria-label="Crew">
     <h2 class="sec">THE CREW <small>schedules in your local time</small></h2>
@@ -370,7 +386,7 @@ async function decide(item, action) {
     if (error) throw error;
     pending.delete(item.id);
     data.approvals = (data.approvals || []).filter((x) => x.id !== item.id); renderAll();
-    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? (item.kind === "email" ? "Approved. After you send it in Mail, tap Mark sent under Ready to send." : "Approved. It's queued for publishing.") : "Rejected."));
+    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? (item.platform === "dm" ? "Approved and copied. Paste it into their DMs, then tap Mark sent under Ready to send." : item.kind === "email" ? "Approved. After you send it in Mail, tap Mark sent under Ready to send." : "Approved. It's queued for publishing.") : "Rejected."));
     setTimeout(() => { $("notice").hidden = true; }, 3500);
     load();
   } catch (e) {
@@ -434,6 +450,7 @@ function renderApprovals() {
     meta.append(el("span", null, ago(it.created_at)));
     card.append(meta, el("h4", null, it.kind === "email" ? "Subject: " + (it.title || "(no subject)") : (it.title || "(untitled)")));
     if (it.kind === "email" && it.to_addr) card.append(el("span", "to", "To: " + it.to_addr));
+    if (it.platform === "dm") card.append(el("span", "to", "Send as a DM from your own account" + (it.link_url ? " · " + it.link_url.replace(/^https?:\/\/(www\.)?/, "") : "")));
     if (it.body) card.append(el("p", it.kind === "email" ? "email" : null, it.body));
     if (it.link_url && /^https?:\/\//i.test(it.link_url)) { const a = el("a", null, it.kind === "email" ? "See their current site ↗" : "Open link ↗"); a.href = it.link_url; a.target = "_blank"; a.rel = "noopener"; a.style.fontSize = "13px"; card.append(a); }
     const acts = el("div", "acts"); const st = pending.get(it.id);
@@ -445,7 +462,10 @@ function renderApprovals() {
       acts.append(y, n);
     } else {
       let y;
-      if (it.kind === "email") {
+      if (it.platform === "dm") {
+        y = el("a", "btn ok", "Approve, copy & open page"); y.href = it.link_url || "#"; y.target = "_blank"; y.rel = "noopener";
+        y.addEventListener("click", () => { try { navigator.clipboard.writeText(it.body || ""); } catch (e) {} decide(it, "approve"); });
+      } else if (it.kind === "email") {
         y = el("a", "btn ok", "Approve & open in Mail"); y.href = mailUrl({ to: it.to_addr, subject: it.title, body: it.body });
         y.addEventListener("click", () => { decide(it, "approve"); });
       } else {
@@ -467,11 +487,12 @@ function renderOutbox() {
   wrap.hidden = !list.length;
   list.forEach((o) => {
     const card = el("article", "item");
-    card.append(el("h4", null, o.business || "Shop"), el("span", "to", "To: " + (o.to || "?")), el("p", null, "Subject: " + (o.subject || "")));
+    const dm = o.channel === "dm";
+    card.append(el("h4", null, o.business || "Shop"), el("span", "to", dm ? "DM · " + (o.site || "") : "To: " + (o.to || "?")), el("p", null, dm ? o.body : "Subject: " + (o.subject || "")));
     const acts = el("div", "acts");
-    const g = el("a", "btn ok", "Open in Mail"); g.href = mailUrl(o);
-    const c = el("button", "btn", "Copy email"); c.type = "button";
-    c.addEventListener("click", async () => { const t = "To: " + o.to + "\nSubject: " + o.subject + "\n\n" + o.body; try { await navigator.clipboard.writeText(t); c.textContent = "Copied"; } catch { c.textContent = "Copy failed"; } setTimeout(() => (c.textContent = "Copy email"), 2000); });
+    const g = el("a", "btn ok", dm ? "Open their page" : "Open in Mail"); g.href = dm ? (o.site || "#") : mailUrl(o); if (dm) { g.target = "_blank"; g.rel = "noopener"; }
+    const c = el("button", "btn", dm ? "Copy DM" : "Copy email"); c.type = "button";
+    c.addEventListener("click", async () => { const t = dm ? o.body : "To: " + o.to + "\nSubject: " + o.subject + "\n\n" + o.body; try { await navigator.clipboard.writeText(t); c.textContent = "Copied"; } catch { c.textContent = "Copy failed"; } setTimeout(() => (c.textContent = dm ? "Copy DM" : "Copy email"), 2000); });
     const m = el("button", "btn", "Mark sent"); m.type = "button";
     m.addEventListener("click", async () => {
       m.disabled = true; m.textContent = "Saving…";
@@ -991,6 +1012,21 @@ $("authForm").addEventListener("submit", async (ev) => {
     else if (/already registered/i.test(m)) { setAuthMode(false); authMsg("That email already has an account. Sign in instead.", true); }
     else authMsg(m.slice(0, 160), true);
   } finally { $("authSubmit").disabled = false; }
+});
+$("addLead").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const name = $("alName").value.trim(), link = $("alLink").value.trim(), email = $("alEmail").value.trim();
+  const msg = $("alMsg"); const ff = (data.ventures || []).find((v) => v.slug === "finishflow");
+  if (!sbc || mode !== "live" || !ff) { msg.textContent = "Sign in first, then try again."; return; }
+  if (!name || !/^https?:\/\//i.test(link)) { msg.textContent = "Add the business name and a full link starting with https://"; return; }
+  const social = /facebook\.com|instagram\.com/i.test(link);
+  $("alSubmit").disabled = true; msg.textContent = "Adding…";
+  const { error } = await sbc.from("leads").insert({ venture_id: ff.id, business_name: name, website: social ? null : link, contact_email: email || null, status: "new",
+    findings: { source: "manual", source_url: link, audited: true, social: social ? [link] : [] } });
+  $("alSubmit").disabled = false;
+  if (error) { msg.textContent = /duplicate/i.test(error.message) ? "That detailer is already on the list." : "Couldn't add it (" + error.message.slice(0, 80) + ")."; return; }
+  $("alName").value = ""; $("alLink").value = ""; $("alEmail").value = "";
+  msg.textContent = "Added " + name + ". Detail Pitch will write them a message within a day.";
 });
 $("signout").addEventListener("click", async () => { try { await sbc.auth.signOut(); } catch (e) {} showAuth("Signed out."); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && mode === "live") load(); });
