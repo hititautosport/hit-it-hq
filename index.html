@@ -105,7 +105,9 @@ a{color:var(--teal)}
 .badge{border:1px solid var(--line);border-radius:4px;padding:1px 6px;text-transform:uppercase;letter-spacing:.04em}
 .badge.aff{border-color:var(--yellow);color:var(--yellow)}
 .item h4{margin:0;font-size:15px;font-weight:600;overflow-wrap:anywhere}
-.item p{margin:0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.item p{margin:0;color:var(--muted);font-size:13px;overflow-wrap:anywhere;white-space:pre-line}
+.item p.email{color:var(--fg);font-size:14px;line-height:1.5;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.item .to{font-family:var(--f-data);font-size:12px;color:var(--teal)}
 .item .acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .ok{border-color:rgba(92,242,138,.6)} .ok:hover{border-color:var(--good);box-shadow:0 0 10px rgba(92,242,138,.35)}
 .no{border-color:rgba(255,92,108,.5)} .no:hover{border-color:var(--bad);box-shadow:0 0 10px rgba(255,92,108,.35)}
@@ -424,9 +426,10 @@ function renderApprovals() {
     if (it.is_affiliate) meta.append(el("span", "badge aff", "Affiliate"));
     const v = ventureById(it.venture_id); if (v) meta.append(el("span", null, v.name));
     meta.append(el("span", null, ago(it.created_at)));
-    card.append(meta, el("h4", null, it.title || "(untitled)"));
-    if (it.body) card.append(el("p", null, it.body));
-    if (it.link_url && /^https?:\/\//i.test(it.link_url)) { const a = el("a", null, "Open link ↗"); a.href = it.link_url; a.target = "_blank"; a.rel = "noopener"; a.style.fontSize = "13px"; card.append(a); }
+    card.append(meta, el("h4", null, it.kind === "email" ? "Subject: " + (it.title || "(no subject)") : (it.title || "(untitled)")));
+    if (it.kind === "email" && it.to_addr) card.append(el("span", "to", "To: " + it.to_addr));
+    if (it.body) card.append(el("p", it.kind === "email" ? "email" : null, it.body));
+    if (it.link_url && /^https?:\/\//i.test(it.link_url)) { const a = el("a", null, it.kind === "email" ? "See their current site ↗" : "Open link ↗"); a.href = it.link_url; a.target = "_blank"; a.rel = "noopener"; a.style.fontSize = "13px"; card.append(a); }
     const acts = el("div", "acts"); const st = pending.get(it.id);
     if (st === "saving") acts.append(el("span", "note", "Saving…"));
     else if (st === "approve" || st === "reject") {
@@ -464,8 +467,9 @@ function renderPipeline() {
     ["Live on Etsy", Number(data.listed || 0)],
     ["Pins posted", cnt(posted, (r) => r.kind === "pin")],
     ["IG posts", cnt(posted, (r) => r.kind === "instagram_post")],
-    ["Etsy listings", cnt(posted, (r) => r.kind === "etsy_listing")],
-    ["Leads found", cnt(leads, () => true)],
+    ["Shops found", cnt(leads, () => true)],
+    ["Sites checked", Number((data.lead_stats || {}).checked || 0)],
+    ["Ready to email", Number((data.lead_stats || {}).emailable || 0)],
     ["Emails sent", cnt(leads, (r) => ["sent", "replied", "meeting", "won", "lost"].includes(r.status))],
     ["Replies", cnt(leads, (r) => ["replied", "meeting", "won"].includes(r.status))],
   ];
