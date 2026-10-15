@@ -288,7 +288,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
       <div class="pipe" id="pipeline"></div>
     </section>
 
-  <section class="panel" aria-label="Add a detailer">
+  <section class="panel" id="addLeadPanel" aria-label="Add a detailer">
     <h2 class="sec">ADD A DETAILER <small>spotted one on Facebook or Instagram?</small></h2>
     <form class="addlead" id="addLead" novalidate>
       <label for="alName">Business name<input id="alName" type="text" autocomplete="off" required></label>
@@ -556,7 +556,7 @@ function mailUrl(o) {
 }
 function renderOutbox() {
   const box = $("outbox"), wrap = $("outboxBox"); box.replaceChildren();
-  const list = (data.outbox || []).filter((o) => filter === "all" || ventureById(filter)?.slug === "hit-digital");
+  const list = (data.outbox || []).filter((o) => inFilter(o.venture_id));
   wrap.hidden = !list.length;
   list.forEach((o) => {
     const card = el("article", "item");
@@ -577,7 +577,7 @@ function renderOutbox() {
 }
 function renderHeld() {
   const box = $("held"), wrap = $("heldBox"); box.replaceChildren();
-  const list = (data.held || []);
+  const list = (data.held || []).filter((x) => inFilter(x.venture_id));
   wrap.hidden = !list.length;
   list.forEach((h) => {
     const card = el("article", "item");
@@ -588,7 +588,7 @@ function renderHeld() {
   });
 }
 function renderSetup() {
-  const all = data.setup || [];
+  const all = (data.setup || []).filter((s) => inFilter(s.venture_id));
   const open = all.filter((s) => !s.done), done = all.filter((s) => s.done);
   const doneTitles = new Set(done.map((s) => s.title));
   $("setupBar").style.width = (all.length ? (done.length / all.length) * 100 : 0) + "%";
@@ -603,7 +603,7 @@ function renderSetup() {
       s.done = cb.checked; renderSetup();
     });
     const body = el("div");
-    body.append(el("span", "tag", s.area), el("b", null, s.title));
+    body.append(el("span", "tag", (ventureById(s.venture_id) || {}).name || s.area), el("b", null, s.title));
     if (s.detail) body.append(el("small", null, s.detail));
     if (!s.done && s.blocked_by && !doneTitles.has(s.blocked_by)) body.append(el("small", "wait", "Waiting on: " + s.blocked_by));
     li.append(cb, body); return li;
@@ -622,17 +622,17 @@ function renderPipeline() {
   const posted = (data.posted_mtd || []).filter((r) => inFilter(r.venture_id));
   const leads = (data.leads || []).filter((r) => inFilter(r.venture_id));
   const cnt = (arr, f) => arr.filter(f).reduce((a, r) => a + Number(r.n || 0), 0);
-  const tiles = [
-    ["Ready to publish", Number(data.approved_waiting || 0)],
-    ["Live on Etsy", Number(data.listed || 0)],
-    ["Pins posted", cnt(posted, (r) => r.kind === "pin")],
-    ["IG posts", cnt(posted, (r) => r.kind === "instagram_post")],
-    ["Shops found", cnt(leads, () => true)],
-    ["Sites checked", Number((data.lead_stats || {}).checked || 0)],
-    ["Ready to email", Number((data.lead_stats || {}).emailable || 0)],
-    ["Emails sent", cnt(leads, (r) => ["sent", "replied", "meeting", "won", "lost"].includes(r.status))],
-    ["Replies", cnt(leads, (r) => ["replied", "meeting", "won"].includes(r.status))],
-  ];
+  const sumV = (arr, k) => (arr || []).filter((r) => inFilter(r.venture_id)).reduce((a, r) => a + Number(r[k] || 0), 0);
+  const ls = data.lead_stats_v ? (k) => sumV(data.lead_stats_v, k) : (k) => Number((data.lead_stats || {})[k] || 0);
+  const pv = data.products_v ? (k) => sumV(data.products_v, k) : (k) => Number(data[k] || 0);
+  const slug = (ventureById(filter) || {}).slug;
+  const SHOP = [["Ready to publish", pv("approved_waiting")], ["Live on Etsy", pv("listed")], ["Pins posted", cnt(posted, (r) => r.kind === "pin")], ["IG posts", cnt(posted, (r) => r.kind === "instagram_post")]];
+  const sent = cnt(leads, (r) => ["sent", "replied", "meeting", "won"].includes(r.status));
+  const replies = cnt(leads, (r) => ["replied", "meeting", "won"].includes(r.status));
+  const DIGITAL = [["Shops found", cnt(leads, () => true)], ["Sites checked", ls("checked")], ["Ready to email", ls("emailable")], ["Emails sent", sent], ["Replies", replies]];
+  const FF = [["Detailers found", cnt(leads, () => true)], ["Ready to pitch", ls("reachable")], ["Pitches sent", sent], ["Replies", replies]];
+  const tiles = slug === "shop" ? SHOP : slug === "hit-digital" ? DIGITAL : slug === "finishflow" ? FF
+    : [...SHOP, ["Shops & detailers found", cnt(leads, () => true)], ["Messages sent", sent], ["Replies", replies]];
   tiles.forEach(([l, n]) => { const d = el("div"); d.append(el("div", "n", String(n)), el("div", "l", l)); box.append(d); });
   const bars = $("spendBars"); bars.replaceChildren();
   const cats = {}; (data.spend_by_cat || []).filter((r) => filter === "all" || r.venture_id === filter).forEach((r) => { cats[r.category] = (cats[r.category] || 0) + Number(r.amt || 0); });
@@ -747,8 +747,10 @@ function showTab(t, opts) {
 }
 function renderTabs() {
   const setBadge = (k, n) => { const b = $("badge-" + k); b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n); };
-  setBadge("approve", (data.approvals || []).length + (data.outbox || []).length);
-  setBadge("setup", (data.setup || []).filter((s) => !s.done && s.owner === "you").length);
+  setBadge("approve", (data.approvals || []).filter((a) => inFilter(a.venture_id)).length + (data.outbox || []).filter((o) => inFilter(o.venture_id)).length);
+  setBadge("setup", (data.setup || []).filter((s) => !s.done && s.owner === "you" && inFilter(s.venture_id)).length);
+  const ff = ventureById(filter);
+  $("addLeadPanel").hidden = !(filter === "all" || (ff && ff.slug === "finishflow"));
 }
 document.querySelectorAll(".tabbtn").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 document.querySelector(".tabbar").addEventListener("keydown", (e) => {
