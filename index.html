@@ -219,7 +219,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
   <div class="grid">
     <section class="panel" aria-label="Approvals">
       <h2 class="sec">APPROVE <small>nothing posts without you</small></h2>
-      <div class="outbox" id="outboxBox" hidden><h3>READY TO SEND</h3><p class="note">Tap Open in Gmail, hit Send, then come back and tap Mark sent.</p><div class="appr" id="outbox"></div></div>
+      <div class="outbox" id="outboxBox" hidden><h3>READY TO SEND</h3><p class="note">Tap Open in Mail, hit Send, then come back and tap Mark sent.</p><div class="appr" id="outbox"></div></div>
       <div class="appr" id="approvals"></div>
       <div class="held" id="heldBox" hidden><h3>HELD FOR FIXES</h3><div class="appr" id="held"></div></div>
     </section>
@@ -370,7 +370,7 @@ async function decide(item, action) {
     if (error) throw error;
     pending.delete(item.id);
     data.approvals = (data.approvals || []).filter((x) => x.id !== item.id); renderAll();
-    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? (item.kind === "email" ? "Approved. It's in Ready to send." : "Approved. It's queued for publishing.") : "Rejected."));
+    showNotice(res === "already_handled" ? "That one was already handled." : (action === "approve" ? (item.kind === "email" ? "Approved. After you send it in Mail, tap Mark sent under Ready to send." : "Approved. It's queued for publishing.") : "Rejected."));
     setTimeout(() => { $("notice").hidden = true; }, 3500);
     load();
   } catch (e) {
@@ -444,15 +444,22 @@ function renderApprovals() {
       const n = el("button", "btn", "Cancel"); n.type = "button"; n.addEventListener("click", () => { pending.delete(it.id); renderApprovals(); });
       acts.append(y, n);
     } else {
-      const y = el("button", "btn ok", "Approve"); y.type = "button"; y.addEventListener("click", () => { pending.set(it.id, "approve"); renderApprovals(); });
+      let y;
+      if (it.kind === "email") {
+        y = el("a", "btn ok", "Approve & open in Mail"); y.href = mailUrl({ to: it.to_addr, subject: it.title, body: it.body });
+        y.addEventListener("click", () => { decide(it, "approve"); });
+      } else {
+        y = el("button", "btn ok", "Approve"); y.type = "button"; y.addEventListener("click", () => { pending.set(it.id, "approve"); renderApprovals(); });
+      }
       const n = el("button", "btn no", "Reject"); n.type = "button"; n.addEventListener("click", () => { pending.set(it.id, "reject"); renderApprovals(); });
       acts.append(y, n);
     }
     card.append(acts); box.append(card);
   });
 }
-function gmailUrl(o) {
-  return "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(o.to || "") + "&su=" + encodeURIComponent(o.subject || "") + "&body=" + encodeURIComponent(o.body || "");
+function mailUrl(o) {
+  const to = /^[^@\s?&]+@[^@\s?&]+\.[^@\s?&]+$/.test(o.to || "") ? o.to : "";
+  return "mailto:" + to + "?subject=" + encodeURIComponent(o.subject || "") + "&body=" + encodeURIComponent(o.body || "");
 }
 function renderOutbox() {
   const box = $("outbox"), wrap = $("outboxBox"); box.replaceChildren();
@@ -462,7 +469,7 @@ function renderOutbox() {
     const card = el("article", "item");
     card.append(el("h4", null, o.business || "Shop"), el("span", "to", "To: " + (o.to || "?")), el("p", null, "Subject: " + (o.subject || "")));
     const acts = el("div", "acts");
-    const g = el("a", "btn ok", "Open in Gmail"); g.href = gmailUrl(o); g.target = "_blank"; g.rel = "noopener";
+    const g = el("a", "btn ok", "Open in Mail"); g.href = mailUrl(o);
     const c = el("button", "btn", "Copy email"); c.type = "button";
     c.addEventListener("click", async () => { const t = "To: " + o.to + "\nSubject: " + o.subject + "\n\n" + o.body; try { await navigator.clipboard.writeText(t); c.textContent = "Copied"; } catch { c.textContent = "Copy failed"; } setTimeout(() => (c.textContent = "Copy email"), 2000); });
     const m = el("button", "btn", "Mark sent"); m.type = "button";
