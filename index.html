@@ -247,6 +247,21 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .how{background:none;border:0;padding:4px 0 0;color:var(--teal);font:600 12px var(--f-body);cursor:pointer;text-align:left}
 .steps{margin:6px 0 2px;padding-left:20px;display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--fg)}
 .steps a{color:var(--teal);overflow-wrap:anywhere}
+.ledger-total{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:8px;font-size:14px}
+.ledger-total b{font-family:var(--f-data);font-size:20px}
+.ledger{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.lg-row{width:100%;display:grid;grid-template-columns:1fr auto 16px;gap:8px;align-items:center;text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--fg);font:inherit;cursor:pointer}
+.lg-row .t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lg-row .t b{font-size:14px;font-weight:600}
+.lg-row .t small{font-size:12px;color:var(--muted)}
+.lg-row .amt{font-family:var(--f-data);font-size:14px}
+.lg-row .car{color:var(--muted);transition:transform .15s}
+.lg-row[aria-expanded="true"] .car{transform:rotate(90deg)}
+.lg-items{list-style:none;margin:4px 0 4px 10px;padding:0 0 0 10px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.lg-items li{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:13px}
+.lg-items .d{color:var(--fg);overflow-wrap:anywhere}
+.lg-items .w{display:block;font-family:var(--f-data);font-size:11px;color:var(--muted)}
+.lg-items .a{font-family:var(--f-data);white-space:nowrap}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
@@ -364,6 +379,13 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
         <tbody id="money"></tbody>
       </table></div>
     </section>
+
+  <section class="panel" aria-label="Money breakdown">
+    <h2 class="sec">WHERE IT CAME FROM <small id="ledgerSub">every dollar in and out</small></h2>
+    <nav class="chips" id="ledgerMonths" aria-label="Pick a month"></nav>
+    <div class="ledger-total" id="ledgerTotal"></div>
+    <ul class="ledger" id="ledger"></ul>
+  </section>
 
   <section class="panel" aria-label="Spend by type">
     <h2 class="sec">SPEND BY TYPE <small>this month</small></h2>
@@ -825,11 +847,58 @@ function renderMoney() {
     o.g += +r.gross_sales || 0; o.f += +r.fees_and_printing || 0; o.e += +r.expenses || 0; o.p += +r.profit || 0;
   });
   const keys = Object.keys(by).sort().reverse();
-  if (!keys.length) { const tr = el("tr"); const td = el("td", "empty", "No sales or spend logged yet. Orders, affiliate payouts and every bot's costs land here automatically once the bots are wired."); td.colSpan = 5; tr.append(td); tb.append(tr); return; }
+  if (!keys.length) { const tr = el("tr"); const td = el("td", "empty", "No sales or spending logged yet. Every sale and every bot's cost lands here automatically."); td.colSpan = 5; tr.append(td); tb.append(tr); return; }
   keys.forEach((k) => {
     const o = by[k]; const [y, m] = k.split("-"); const label = new Date(+y, +m - 1, 1).toLocaleDateString([], { month: "short", year: "numeric" });
     const tr = el("tr"); const p = el("td", "num " + (o.p > 0 ? "pos" : o.p < 0 ? "neg" : ""), money(o.p));
     tr.append(el("td", null, label), el("td", "num", money(o.g)), el("td", "num", money(o.f)), el("td", "num", money(o.e)), p); tb.append(tr);
+  });
+}
+let ledgerMonth = null; const ledgerOpen = new Set();
+const LEDGER_GROUP = (r) => {
+  if (r.side === "sale") return { key: "sale:" + r.vendor, label: r.vendor + " sales", note: "after Etsy fees and Printify printing" };
+  if (r.category === "platform_fees") return { key: "fee:" + r.vendor, label: r.vendor + " fees", note: r.vendor === "Etsy" ? "$0.20 per listing published" : "platform fees" };
+  if (r.category === "image_gen") return { key: "img:" + r.vendor, label: (r.vendor === "OpenAI" ? "ChatGPT" : r.vendor) + " design art", note: "Designer painting shirt art" };
+  if (r.category === "ai_api") return { key: "ai:" + r.vendor, label: (r.vendor === "Anthropic" ? "Claude" : r.vendor) + " AI", note: "writing, research, proofreading" };
+  if (r.category === "subscription") return { key: "sub:" + r.vendor, label: r.vendor + " subscription", note: "monthly plan" };
+  if (r.category === "ads") return { key: "ads:" + r.vendor, label: r.vendor + " ads", note: "promoted posts" };
+  return { key: "other:" + r.vendor + r.category, label: (r.vendor || "Other") + (r.category ? " · " + r.category.replace(/_/g, " ") : ""), note: "" };
+};
+const tinyMoney = (n) => { const a = Math.abs(n); return a > 0 && a < 0.01 ? (n < 0 ? "-$" : "$") + a.toFixed(4).replace(/0+$/, "") : money(n); };
+function renderLedger() {
+  const rows = (data.ledger || []).filter((r) => inFilter(r.venture_id));
+  const months = Array.from(new Set(rows.map((r) => String(r.at).slice(0, 7)))).sort().reverse();
+  const now = new Date(); const cur = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
+  if (!months.includes(cur)) months.unshift(cur);
+  if (!ledgerMonth || !months.includes(ledgerMonth)) ledgerMonth = cur;
+  const mbox = $("ledgerMonths"); mbox.replaceChildren();
+  months.forEach((m) => { const [y, mo] = m.split("-"); const b = el("button", "chip", new Date(+y, +mo - 1, 1).toLocaleDateString([], { month: "short", year: "numeric" }));
+    b.type = "button"; b.setAttribute("aria-pressed", String(m === ledgerMonth)); b.addEventListener("click", () => { ledgerMonth = m; renderLedger(); }); mbox.append(b); });
+  const list = rows.filter((r) => String(r.at).slice(0, 7) === ledgerMonth);
+  const total = list.reduce((a, r) => a + Number(r.amount || 0), 0);
+  const tot = $("ledgerTotal"); tot.replaceChildren(el("span", null, list.length + " item" + (list.length === 1 ? "" : "s") + (filter === "all" ? " · all businesses" : " · " + ((ventureById(filter) || {}).name || ""))), el("b", total > 0 ? "pos" : total < 0 ? "neg" : "", tinyMoney(total)));
+  const ul = $("ledger"); ul.replaceChildren();
+  if (!list.length) { ul.append(el("li", "empty", "Nothing in or out this month for this business yet.")); return; }
+  const groups = {};
+  list.forEach((r) => { const g = LEDGER_GROUP(r); const o = groups[g.key] || (groups[g.key] = { ...g, total: 0, items: [] }); o.total += Number(r.amount || 0); o.items.push(r); });
+  Object.values(groups).sort((a, b) => Math.abs(b.total) - Math.abs(a.total)).forEach((g) => {
+    const li = el("li"); const open = ledgerOpen.has(g.key);
+    const btn = el("button", "lg-row"); btn.type = "button"; btn.setAttribute("aria-expanded", String(open));
+    const t = el("span", "t"); t.append(el("b", null, g.label), el("small", null, g.items.length + " item" + (g.items.length === 1 ? "" : "s") + (g.note ? " · " + g.note : "")));
+    btn.append(t, el("span", "amt " + (g.total > 0 ? "pos" : g.total < 0 ? "neg" : ""), tinyMoney(g.total)), el("span", "car", "›"));
+    btn.addEventListener("click", () => { if (ledgerOpen.has(g.key)) ledgerOpen.delete(g.key); else ledgerOpen.add(g.key); renderLedger(); });
+    li.append(btn);
+    if (open) {
+      const items = el("ul", "lg-items");
+      g.items.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 80).forEach((r) => {
+        const it = el("li"); const left = el("span"); const d = new Date(r.at);
+        left.append(el("span", "d", r.description || "(no description)"), el("span", "w", d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + (r.bot ? " · " + r.bot : "") + (ventureById(r.venture_id) && filter === "all" ? " · " + ventureById(r.venture_id).name : "")));
+        it.append(left, el("span", "a " + (r.amount > 0 ? "pos" : "neg"), tinyMoney(Number(r.amount)))); items.append(it);
+      });
+      if (g.items.length > 80) items.append(el("li", "note", "+" + (g.items.length - 80) + " older items"));
+      li.append(items);
+    }
+    ul.append(li);
   });
 }
 function renderFeed() {
@@ -977,7 +1046,7 @@ window.addEventListener("hashchange", () => { const t = location.hash.slice(1); 
 $("kWaitTile").addEventListener("click", () => showTab("approve"));
 $("kWaitTile").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showTab("approve"); } });
 
-function renderAll() { renderBoss(); renderTabs(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderSetup(); renderControls(); renderReport(); renderContacted(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
+function renderAll() { renderBoss(); renderTabs(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderSetup(); renderControls(); renderReport(); renderContacted(); renderLedger(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
 
 /* ---------- the floor (canvas) ---------- */
 const world = (() => {
