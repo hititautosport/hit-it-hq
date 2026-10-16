@@ -223,6 +223,30 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .mocks img{display:block;width:150px;height:150px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:#fff}
 .tags{display:flex;flex-wrap:wrap;gap:4px}
 .tags span{font-family:var(--f-data);font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 7px}
+.paused-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border:1px solid rgba(255,192,77,.5);background:rgba(255,192,77,.08);color:var(--warn);border-radius:8px;padding:10px 12px;font-size:14px}
+.paused-bar[hidden]{display:none}
+.ctl{display:flex;flex-direction:column;gap:10px}
+.ctl-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.meter{height:8px;border-radius:4px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--pink))}
+.meter.hot i{background:var(--bad)}
+.budget-btn{background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.report{border-left:3px solid var(--yellow)}
+.report .stats{display:flex;flex-wrap:wrap;gap:6px}
+.report .stats span{font-family:var(--f-data);font-size:11px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted)}
+.report p{margin:0;white-space:pre-line;font-size:14px;line-height:1.5}
+.lead{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel-2);display:flex;flex-direction:column;gap:6px}
+.lead .top{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;justify-content:space-between}
+.lead b{font-size:14px}
+.lead .meta{font-family:var(--f-data);font-size:11px;color:var(--muted)}
+.lead .meta.good{color:var(--good)} .lead .meta.bad{color:var(--bad)}
+.lead .acts{display:flex;flex-wrap:wrap;gap:6px}
+.lead .acts .btn{padding:6px 10px;font-size:11px}
+.reasons{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.reasons .chip{font-size:12px}
+.how{background:none;border:0;padding:4px 0 0;color:var(--teal);font:600 12px var(--f-body);cursor:pointer;text-align:left}
+.steps{margin:6px 0 2px;padding-left:20px;display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--fg)}
+.steps a{color:var(--teal);overflow-wrap:anywhere}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
@@ -242,6 +266,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
   </header>
 
   <div id="notice" class="notice" hidden></div>
+  <div id="pausedBar" class="paused-bar" role="status" hidden><span>All bots are paused. Nothing new gets drafted, designed or researched.</span><button id="unpause" class="btn ok" type="button">Turn bots back on</button></div>
 
   <nav class="chips" id="ventureChips" aria-label="Filter by business"></nav>
 
@@ -269,6 +294,21 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
     </div>
   </section>
 
+  <section class="panel report" id="reportPanel" aria-label="Weekly report" hidden>
+    <h2 class="sec">RIPPY'S MONDAY REPORT <small id="reportWeek"></small></h2>
+    <div class="stats" id="reportStats"></div>
+    <p id="reportText"></p>
+  </section>
+
+  <section class="panel" aria-label="Bot controls">
+    <h2 class="sec">CONTROLS <small>spending limits</small></h2>
+    <div class="ctl">
+      <div class="ctl-row"><span>AI spend this month <b id="aiSpend">$0.00</b> of <b id="aiCap">$25.00</b> cap</span><button id="editCap" class="btn" type="button">Change cap</button></div>
+      <div class="meter" id="aiMeter"><i id="aiBar" style="width:0%"></i></div>
+      <div class="ctl-row"><span class="note">Each bot also has its own monthly budget (tap it in the Crew list to change). A bot that hits its budget or the cap stops and pings you.</span><button id="pauseAll" class="btn no" type="button">Pause all bots</button></div>
+    </div>
+  </section>
+
   <section class="panel" aria-label="Crew">
     <h2 class="sec">THE CREW <small>schedules in your local time</small></h2>
     <div class="tbl-wrap"><table>
@@ -292,6 +332,12 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
       <h2 class="sec">PIPELINE <small>this month</small></h2>
       <div class="pipe" id="pipeline"></div>
     </section>
+
+  <section class="panel" id="contactedPanel" aria-label="Leads you've contacted">
+    <h2 class="sec">LEADS YOU'VE CONTACTED <small>tap what happened</small></h2>
+    <p class="note">No answer after a week? The bot drafts one polite follow-up into Approve. "Stop" blocks a business for good.</p>
+    <div class="appr" id="contacted"></div>
+  </section>
 
   <section class="panel" id="addLeadPanel" aria-label="Add a detailer">
     <h2 class="sec">ADD A DETAILER <small>spotted one on Facebook or Instagram?</small></h2>
@@ -326,6 +372,11 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
   </div>
 
   <div class="tab" id="tab-setup" role="tabpanel" aria-labelledby="tb-setup" hidden>
+  <section class="panel" id="alertsPanel" aria-label="Phone alerts">
+    <h2 class="sec">PHONE ALERTS <small>approvals, sales, problems, Monday report</small></h2>
+    <p class="note" id="alertsText">Checking this device…</p>
+    <div class="acts" style="display:flex;flex-wrap:wrap;gap:8px"><button id="alertsOn" class="btn ok" type="button" hidden>Turn on phone alerts</button><button id="alertsTest" class="btn" type="button" hidden>Send a test alert</button></div>
+  </section>
   <section class="panel" aria-label="Setup checklist">
     <div class="setup-head">
       <h2 class="sec" style="margin:0">FULL STEAM CHECKLIST <small id="setupSub">what's left to get every bot running</small></h2>
@@ -441,6 +492,7 @@ async function load() {
     const u = $("updated"); u.hidden = false; u.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     if (!ventureById(filter) && filter !== "all") filter = "all";
     renderAll(); world.sync();
+    if (!window.__alertsChecked) { window.__alertsChecked = true; refreshAlerts(); }
   } catch (e) {
     const msg = String((e && (e.message || e.error_description)) || e);
     if (/not_admin/.test(msg) || (e && e.code === "42501")) {
@@ -456,6 +508,10 @@ async function load() {
   } finally { loading = false; $("refresh").disabled = false; }
 }
 
+async function rejectWith(item, reason, note) {
+  if (mode === "live" && (reason || note)) { try { await sbc.rpc("hq_feedback", { p_table: item.tbl, p_id: item.id, p_decision: "reject", p_reason: reason, p_note: note || null }); } catch (_) { /* reason is a bonus */ } }
+  decide(item, "reject");
+}
 async function decide(item, action) {
   if (!UUID.test(item.id) || !["content_items", "products"].includes(item.tbl)) return;
   pending.set(item.id, "saving"); renderApprovals();
@@ -542,8 +598,18 @@ function renderApprovals() {
     if (!mocks.length && it.link_url && /^https?:\/\//i.test(it.link_url)) { const a = el("a", null, it.kind === "email" ? "See their current site ↗" : "Open link ↗"); a.href = it.link_url; a.target = "_blank"; a.rel = "noopener"; a.style.fontSize = "13px"; card.append(a); }
     const acts = el("div", "acts"); const st = pending.get(it.id);
     if (st === "saving") acts.append(el("span", "note", "Saving…"));
-    else if (st === "approve" || st === "reject") {
-      acts.append(el("span", "note", st === "approve" ? (it.kind === "product_own_design" ? "Publish to Etsy ($0.20 listing fee)?" : "Approve this?") : "Reject this?"));
+    else if (st === "reject") {
+      const rs = el("div", "reasons"); rs.append(el("span", "note", "Why? It teaches the bots your taste:"));
+      const opts = it.tbl === "products" ? ["Not funny", "Looks cheap", "Wrong style", "Wrong audience", "Trademark worry", "Text is wrong"]
+        : (it.kind === "email" || it.platform === "dm") ? ["Wrong tone", "Too long", "Too salesy", "Wrong business", "Wrong facts"] : ["Not good enough", "Wrong audience"];
+      opts.forEach((r) => { const c = el("button", "chip", r); c.type = "button"; c.addEventListener("click", () => rejectWith(it, r)); rs.append(c); });
+      const o = el("button", "chip", "Other…"); o.type = "button"; o.addEventListener("click", () => { const note = prompt("What was wrong with it? (a few words)"); if (note !== null) rejectWith(it, "Other", note); }); rs.append(o);
+      const j = el("button", "btn no", "Just reject"); j.type = "button"; j.addEventListener("click", () => rejectWith(it, null));
+      const n = el("button", "btn", "Cancel"); n.type = "button"; n.addEventListener("click", () => { pending.delete(it.id); renderApprovals(); });
+      acts.append(rs, j, n);
+    }
+    else if (st === "approve") {
+      acts.append(el("span", "note", it.kind === "product_own_design" ? "Publish to Etsy ($0.20 listing fee)?" : "Approve this?"));
       const y = el("button", "btn " + (st === "approve" ? "ok" : "no"), "Yes, " + st); y.type = "button"; y.addEventListener("click", () => decide(it, st));
       const n = el("button", "btn", "Cancel"); n.type = "button"; n.addEventListener("click", () => { pending.delete(it.id); renderApprovals(); });
       acts.append(y, n);
@@ -601,8 +667,18 @@ function renderHeld() {
     box.append(card);
   });
 }
+const openSteps = new Set();
+function linkify(node, text) {
+  const re = /\b((?:https?:\/\/)?(?:[a-z0-9-]+\.)+(?:com|net|org|io)(?:\/[^\s,)]*)?)/gi; let last = 0, m;
+  while ((m = re.exec(text))) {
+    node.append(document.createTextNode(text.slice(last, m.index)));
+    const a = el("a", null, m[1]); a.href = /^https?:/i.test(m[1]) ? m[1] : "https://" + m[1].replace(/[.]$/, ""); a.target = "_blank"; a.rel = "noopener"; node.append(a);
+    last = m.index + m[1].length;
+  }
+  node.append(document.createTextNode(text.slice(last)));
+}
 function renderSetup() {
-  const all = (data.setup || []).filter((s) => inFilter(s.venture_id));
+  const all = (data.setup || []).filter((s) => !s.venture_id || inFilter(s.venture_id));
   const open = all.filter((s) => !s.done), done = all.filter((s) => s.done);
   const doneTitles = new Set(done.map((s) => s.title));
   $("setupBar").style.width = (all.length ? (done.length / all.length) * 100 : 0) + "%";
@@ -620,6 +696,13 @@ function renderSetup() {
     body.append(el("span", "tag", (ventureById(s.venture_id) || {}).name || s.area), el("b", null, s.title));
     if (s.detail) body.append(el("small", null, s.detail));
     if (!s.done && s.blocked_by && !doneTitles.has(s.blocked_by)) body.append(el("small", "wait", "Waiting on: " + s.blocked_by));
+    if (Array.isArray(s.steps) && s.steps.length) {
+      const open = openSteps.has(s.id);
+      const how = el("button", "how", open ? "Hide steps ▴" : "How to do it ▾"); how.type = "button"; how.setAttribute("aria-expanded", String(open));
+      how.addEventListener("click", () => { if (openSteps.has(s.id)) openSteps.delete(s.id); else openSteps.add(s.id); renderSetup(); });
+      body.append(how);
+      if (open) { const ol = el("ol", "steps"); s.steps.forEach((t) => { const li2 = el("li"); linkify(li2, t); ol.append(li2); }); body.append(ol); }
+    }
     li.append(cb, body); return li;
   };
   const you = $("setupYou"), cl = $("setupClaude"), dl = $("setupDoneList");
@@ -630,6 +713,68 @@ function renderSetup() {
   if (!co.length) cl.append(el("li", "empty", "Nothing left to build."));
   done.forEach((s) => dl.append(row(s)));
   $("setupDone").hidden = !done.length; $("setupDoneSum").textContent = "Done (" + done.length + ")";
+}
+async function rpcOrWarn(name, args, okMsg) {
+  if (mode !== "live") return null;
+  const { data: res, error } = await sbc.rpc(name, args);
+  if (error) { showNotice("Couldn't save that (" + String(error.message).slice(0, 90) + ").", "err"); return null; }
+  if (okMsg) { showNotice(okMsg); setTimeout(() => { $("notice").hidden = true; }, 3000); }
+  load(); return res ?? true;
+}
+function editBudget(a) {
+  const v = prompt("Monthly budget for " + a.name + " (dollars). It stops for the month when it hits this.", String(a.budget ?? 10));
+  if (v === null) return; const n = Number(String(v).replace(/[$,\s]/g, ""));
+  if (!isFinite(n) || n < 0 || n > 500) { showNotice("Enter a dollar amount between 0 and 500.", "err"); return; }
+  rpcOrWarn("hq_set_budget", { p_agent: a.id, p_budget: n }, a.name + " budget set to " + money(n) + " a month.");
+}
+function renderControls() {
+  const cap = Number(data.ai_cap ?? 25), spent = Number(data.ai_spend_mtd ?? 0);
+  $("aiSpend").textContent = money(spent); $("aiCap").textContent = money(cap);
+  $("aiBar").style.width = Math.min(100, cap ? (spent / cap) * 100 : 0) + "%";
+  $("aiMeter").classList.toggle("hot", cap > 0 && spent / cap >= 0.8);
+  const paused = !!data.paused;
+  $("pausedBar").hidden = !paused || mode !== "live";
+  const pb = $("pauseAll"); pb.textContent = paused ? "Turn bots back on" : "Pause all bots"; pb.className = "btn " + (paused ? "ok" : "no");
+}
+function renderReport() {
+  const r = data.report, box = $("reportPanel");
+  box.hidden = !r || !r.summary;
+  if (!r || !r.summary) return;
+  const d = new Date(r.week_start + "T12:00:00");
+  $("reportWeek").textContent = "week of " + d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const s = r.stats || {}; const st = $("reportStats"); st.replaceChildren();
+  [[(s.sales?.orders ?? 0) + " sales", 1], [money(s.sales?.net ?? 0) + " net", 1], [money(s.spend?.total ?? 0) + " spent", 1], [(s.sent?.emails ?? 0) + (s.sent?.dms ?? 0) + " messages sent", 1], [(s.replies ?? 0) + " replies", 1]].forEach(([t]) => st.append(el("span", null, t)));
+  $("reportText").textContent = r.summary;
+}
+const LEAD_LABEL = { sent: "Sent", replied: "Replied", meeting: "Interested", won: "Won", do_not_contact: "Blocked", lost: "Closed", drafted: "Drafted", approved: "Approved" };
+function renderContacted() {
+  const box = $("contacted"); box.replaceChildren();
+  const list = (data.contacted || []).filter((l) => inFilter(l.venture_id));
+  $("contactedPanel").hidden = !list.length && filter !== "all" && !["hit-digital", "finishflow"].includes((ventureById(filter) || {}).slug);
+  if (!list.length) { box.append(el("div", "empty", "Nobody contacted yet. Once you send an email or DM, the business shows up here.")); return; }
+  list.forEach((l) => {
+    const card = el("article", "lead");
+    const top = el("div", "top"); const v = ventureById(l.venture_id);
+    top.append(el("b", null, l.business_name || "Shop"), el("span", "meta", v ? v.name : ""));
+    const days = l.last_contacted_at ? Math.floor((Date.now() - Date.parse(l.last_contacted_at)) / 86400000) : null;
+    const st = LEAD_LABEL[l.status] || l.status;
+    const fu = l.followup_state === "drafted" ? " · follow-up waiting in Approve" : l.followup_state === "sent" ? " · followed up" : l.followup_due ? " · follow-up coming" : "";
+    const meta = el("span", "meta" + (["replied", "meeting", "won"].includes(l.status) ? " good" : l.do_not_contact ? " bad" : ""), st + (days !== null ? " · " + (days === 0 ? "today" : days + " day" + (days === 1 ? "" : "s") + " ago") : "") + fu);
+    card.append(top, meta);
+    if (!l.do_not_contact && l.status !== "won") {
+      const acts = el("div", "acts");
+      const mk = (label, outcome, cls) => { const b = el("button", "btn " + (cls || ""), label); b.type = "button"; b.addEventListener("click", () => {
+        if (outcome === "stop" && !confirm("Block " + (l.business_name || "this business") + "? The bots will never contact them again.")) return;
+        rpcOrWarn("hq_lead_outcome", { p_lead: l.id, p_outcome: outcome }, outcome === "stop" ? "Blocked. They won't be contacted again." : "Saved.");
+      }); acts.append(b); };
+      if (l.status === "sent") mk("Replied", "replied");
+      if (l.status !== "meeting") mk("Interested", "interested", "ok");
+      mk("Won", "won", "ok");
+      mk("Stop / not interested", "stop", "no");
+      card.append(acts);
+    }
+    box.append(card);
+  });
 }
 function renderPipeline() {
   const box = $("pipeline"); box.replaceChildren();
@@ -665,7 +810,8 @@ function renderCrew() {
     const who = el("td"); const w = el("div", "who"); w.append(el("strong", null, a.name), el("span", null, a.active ? (a.queued > 0 ? a.queued + " task(s) queued" : "Ready") : "Not switched on yet")); who.append(w);
     const v = ventureById(a.venture_id);
     const st = el("td"); st.append(el("span", "st " + s, STATUS_LABEL[s]));
-    const sp = el("td", "num"); sp.append(document.createTextNode(money(a.spend_mtd) + " / " + money(a.budget)));
+    const sp = el("td", "num"); const bb = el("button", "budget-btn", money(a.spend_mtd) + " / " + money(a.budget)); bb.type = "button"; bb.title = "Change " + a.name + "'s monthly budget";
+    bb.addEventListener("click", () => editBudget(a)); sp.append(bb);
     const bud = el("span", "budget"); const bi = el("i"); bi.style.width = Math.min(100, (Number(a.spend_mtd) / (Number(a.budget) || 1)) * 100) + "%"; bud.append(bi); sp.append(bud);
     tr.append(who, el("td", null, v ? v.name : "—"), el("td", null, a.model === "gpt" ? "ChatGPT" : a.model === "claude" ? "Claude" : a.model), el("td", null, cronText(a.schedule)), st, sp);
     tb.append(tr);
@@ -745,6 +891,61 @@ function renderLegend() {
   const c = { working: 0, lounge: 0, off: 0 }; (data.agents || []).forEach((a) => c[agentStatus(a)]++);
   $("lgWork").textContent = c.working; $("lgLounge").textContent = c.lounge; $("lgOff").textContent = c.off;
 }
+/* ---------- phone alerts ---------- */
+const ALERTS = { supported: "serviceWorker" in navigator && "PushManager" in window && "Notification" in window,
+  standalone: (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true,
+  ios: /iPhone|iPad|iPod/.test(navigator.userAgent), reg: null, sub: null };
+function b64urlToBytes(s) { const pad = "=".repeat((4 - (s.length % 4)) % 4); const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); }
+async function refreshAlerts() {
+  const t = $("alertsText"), on = $("alertsOn"), test = $("alertsTest");
+  on.hidden = true; test.hidden = true;
+  if (!ALERTS.supported) { t.textContent = ALERTS.ios && !ALERTS.standalone ? "Open Hit It HQ from its Home Screen icon (not Safari) to turn on alerts." : "This browser can't receive alerts. On iPhone, open HQ from the Home Screen icon."; return; }
+  if (ALERTS.ios && !ALERTS.standalone) { t.textContent = "Open Hit It HQ from its Home Screen icon (not Safari) to turn on alerts."; return; }
+  try {
+    ALERTS.reg = await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(() => r(null), 5000))]);
+    if (!ALERTS.reg) { t.textContent = "Alerts couldn't start on this device yet. Close HQ completely and reopen it from the Home Screen."; return; }
+    ALERTS.sub = await ALERTS.reg.pushManager.getSubscription();
+  } catch (_) { ALERTS.sub = null; }
+  if (Notification.permission === "denied") { t.textContent = "Alerts are blocked for HQ. Turn them back on in iPhone Settings → Notifications → Hit It HQ."; return; }
+  if (ALERTS.sub) { t.textContent = "Alerts are on for this device."; test.hidden = mode !== "live"; if (mode === "live") saveSub(ALERTS.sub).catch(() => {}); }
+  else { t.textContent = "Get a ping when something lands in Approve, a sale comes in, a bot has a problem, or the Monday report is ready."; on.hidden = mode !== "live"; }
+}
+async function saveSub(sub) {
+  const j = sub.toJSON();
+  const { error } = await sbc.rpc("hq_push_subscribe", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent });
+  if (error) throw error;
+}
+async function turnOnAlerts() {
+  const btn = $("alertsOn"); btn.disabled = true; btn.textContent = "Turning on…";
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("Notifications weren't allowed");
+    const reg = await navigator.serviceWorker.ready;
+    const { data: row, error } = await sbc.from("settings").select("value").eq("key", "vapid_public").single();
+    if (error || !row) throw new Error("Couldn't load the alert key");
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(String(row.value)) });
+    await saveSub(sub);
+    await sbc.rpc("hq_push_test");
+    showNotice("Alerts are on. A test alert is on its way."); setTimeout(() => { $("notice").hidden = true; }, 4000);
+  } catch (e) { showNotice("Couldn't turn on alerts (" + String(e.message || e).slice(0, 90) + ").", "err"); }
+  btn.disabled = false; btn.textContent = "Turn on phone alerts"; refreshAlerts();
+}
+$("alertsOn").addEventListener("click", turnOnAlerts);
+$("alertsTest").addEventListener("click", async () => { const { error } = await sbc.rpc("hq_push_test"); showNotice(error ? "Couldn't send (" + error.message.slice(0, 80) + ")." : "Test alert sent.", error ? "err" : undefined); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(() => refreshAlerts()).catch(() => refreshAlerts()); else refreshAlerts();
+$("pauseAll").addEventListener("click", () => {
+  const p = !data.paused;
+  if (p && !confirm("Pause all bots? Nothing new gets drafted, designed or researched until you turn them back on. Approvals you already made still go through.")) return;
+  rpcOrWarn("hq_set_paused", { p_paused: p }, p ? "All bots paused." : "Bots are back on.");
+});
+$("unpause").addEventListener("click", () => rpcOrWarn("hq_set_paused", { p_paused: false }, "Bots are back on."));
+$("editCap").addEventListener("click", () => {
+  const v = prompt("Monthly cap on ALL AI spending (dollars). Every bot stops for the month when it's reached.", String(data.ai_cap ?? 25));
+  if (v === null) return; const n = Number(String(v).replace(/[$,\s]/g, ""));
+  if (!isFinite(n) || n < 0 || n > 1000) { showNotice("Enter a dollar amount between 0 and 1000.", "err"); return; }
+  rpcOrWarn("hq_set_ai_cap", { p_cap: n }, "AI cap set to " + money(n) + " a month.");
+});
+
 /* ---------- tabs ---------- */
 const TABS = ["floor", "approve", "pipeline", "money", "setup"];
 let tab = "floor", worldReady = false;
@@ -776,7 +977,7 @@ window.addEventListener("hashchange", () => { const t = location.hash.slice(1); 
 $("kWaitTile").addEventListener("click", () => showTab("approve"));
 $("kWaitTile").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showTab("approve"); } });
 
-function renderAll() { renderBoss(); renderTabs(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderSetup(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
+function renderAll() { renderBoss(); renderTabs(); renderChips(); renderKpis(); renderOutbox(); renderApprovals(); renderHeld(); renderSetup(); renderControls(); renderReport(); renderContacted(); renderPipeline(); renderCrew(); renderMoney(); renderFeed(); renderLegend(); }
 
 /* ---------- the floor (canvas) ---------- */
 const world = (() => {
